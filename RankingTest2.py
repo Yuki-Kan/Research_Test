@@ -11,8 +11,13 @@ class RankingTest:
     ranking_list = np.array(list(range(ranking_range[0], ranking_range[1] + 1)))
     gaussian_sd = 0.5
     omega_ = np.eye(2)
+    W_ = np.array([[1.1, 9.5], [2.1, 9.8], [20, 20], [32, -1.7], [0.5, -2.5], [9.8, -3.4], [-9.4, -3.6]
+                                , [-2.8, -9.2], [-3.1, -9.5], [-3.7, 9.9], [-9.9, 0.1], [-1.5, 1.5]])
 
-    def find_prototype(self, list_dist, label, k_size):
+
+    def find_prototype(self, data_point, label, k_size):
+        list_dist = _squared_euclidean(self.W_, data_point).flatten()
+
         # print(list_dist, label, self.ptype_id)
         # correct kernel class
         correct_idx0 = label * self.prototypes_per_class
@@ -59,38 +64,49 @@ class RankingTest:
         return W_plus, W_minus, max_error_cls
 
     # update prototype a and b, and omega
-    def update_prot_and_omega(self, w_plus, w_minus, label, max_error_cls, datapoint, protype_position):
+    def update_prot_and_omega(self, w_plus, w_minus, label, max_error_cls, datapoint):
         # print(w_plus, w_minus)
         while len(w_plus) > 0 and len(w_minus) > 0:
             # find closest correct prototype from w_plus
             min_value = np.inf
-            min_ind = 0
+            min_ind_correct = 0
             index = 0
             for prot in w_plus:
                 if prot[1] < min_value:
                     min_value = prot[1]
-                    min_ind = index
+                    min_ind_correct = index
                 index += 1
-            closest_cor_p = w_plus.pop(min_ind)
+            closest_cor_p = w_plus.pop(min_ind_correct)
 
             # find closest wrong prototype from w_minus
             min_value = np.inf
-            min_ind = 0
+            min_ind_wrong = 0
             index = 0
             for prot in w_minus:
                 if prot[1] < min_value:
                     min_value = prot[1]
-                    min_ind = index
+                    min_ind_wrong = index
                 index += 1
-            closest_wro_p = w_minus.pop(min_ind)
+            closest_wro_p = w_minus.pop(min_ind_wrong)
 
             # update prototypes and omega here
             pt_pair = [closest_cor_p, closest_wro_p]
-            self._derivatives(pt_pair, label, max_error_cls, datapoint, protype_position)
-            # print(pt_pair)
+            delta_correct_prot, delta_wrong_prot, delta_omega = self._derivatives(pt_pair, label, max_error_cls, datapoint)
+
+            pid_correct = closest_cor_p[0]
+            pid_wrong = closest_wro_p[0]
+            print(self.W_)
+            print(self.omega_)
+            self.W_[pid_correct] = self.W_[pid_correct] - delta_correct_prot
+            self.W_[pid_wrong] = self.W_[pid_wrong] - delta_wrong_prot
+            self.omega_ = self.omega_ - delta_omega
+            print(self.W_)
+            print(self.omega_)
+
+
 
     # calculate derivatives of prototypes a, b and omega
-    def _derivatives(self, pt_pair, label, max_error_cls, datapoint, protype_position):
+    def _derivatives(self, pt_pair, label, max_error_cls, datapoint):
         # print(max_error_cls)
         # calculate alpha+ and alpha-
         distance_correct = pt_pair[0][1]
@@ -111,8 +127,8 @@ class RankingTest:
 
         pid_correct = pt_pair[0][0]
         pid_wrong = pt_pair[1][0]
-        diff_correct = datapoint - protype_position[pid_correct]
-        diff_wrong = datapoint - protype_position[pid_wrong]
+        diff_correct = datapoint - self.W_[pid_correct]
+        diff_wrong = datapoint - self.W_[pid_wrong]
 
         diff_mtx_correct = diff_correct.T.dot(diff_correct)
         delta_omega_plus = gamma_plus * 2 * alpha_plus*self.omega_.dot(diff_mtx_correct)
@@ -126,6 +142,9 @@ class RankingTest:
         delta_correct_prot = gamma_plus * (-2*alpha_plus*diff_correct.dot(self.omega_.T.dot(self.omega_)))
         delta_wrong_prot = gamma_minus * (-2*alpha_minus*diff_wrong.dot(self.omega_.T.dot(self.omega_)))
         print("delta:", delta_correct_prot, delta_wrong_prot)
+
+        return delta_correct_prot, delta_wrong_prot, delta_omega
+
 
     # def alpha_correct(self, rank_diff):
     #
@@ -146,14 +165,12 @@ def _squared_euclidean(a, b=None):
 
 rankTest = RankingTest()
 data_point = np.array([[0, 0]])
-prot_position = np.array([[1.1, 3.5], [2.1, 2.8], [3.5, 1.1], [3.2, -1.7], [2.2, -2.3], [1.8, -3.4], [-1.4, -3.6]
-                             , [-2.8, -2.2], [-3.1, -1.5], [-3.7, 1.9], [-2.9, 2.1], [-1.2, 3.4]])
 
-l_distance =_squared_euclidean(prot_position, data_point).flatten()
 # l_distance = np.array([4.11044186, 6.31040921, 58.6941359,  53.96639758, 32.68570672, 39.96803298,
 #                        11.14983586,  8.34313266, 18.74119665, 11.66475519, 28.03848346, 29.49774315])
 lbl = 1
-W_correct, W_wrong, max_error_cls = rankTest.find_prototype(l_distance, lbl, 1)
-rankTest.update_prot_and_omega(W_correct, W_wrong, lbl, max_error_cls, data_point, prot_position)
+for i in range(10000):
+    W_correct, W_wrong, max_error_cls = rankTest.find_prototype(data_point, lbl, 1)
+    rankTest.update_prot_and_omega(W_correct, W_wrong, lbl, max_error_cls, data_point)
 # print("======")
 # print("result: ", W_correct, W_wrong)
